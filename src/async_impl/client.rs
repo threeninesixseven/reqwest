@@ -51,6 +51,8 @@ use log::debug;
 use native_tls_crate::TlsConnector;
 use pin_project_lite::pin_project;
 #[cfg(feature = "http3")]
+use quinn::congestion::ControllerFactory;
+#[cfg(feature = "http3")]
 use quinn::TransportConfig;
 #[cfg(feature = "http3")]
 use quinn::VarInt;
@@ -188,6 +190,8 @@ struct Config {
     #[cfg(feature = "http3")]
     quic_send_window: Option<u64>,
     #[cfg(feature = "http3")]
+    quic_congestion_controller: Option<Arc<dyn ControllerFactory + Send + Sync + 'static>>,
+    #[cfg(feature = "http3")]
     h3_max_field_section_size: Option<u64>,
     #[cfg(feature = "http3")]
     h3_send_grease: Option<bool>,
@@ -307,6 +311,8 @@ impl ClientBuilder {
                 #[cfg(feature = "http3")]
                 quic_send_window: None,
                 #[cfg(feature = "http3")]
+                quic_congestion_controller: None,
+                #[cfg(feature = "http3")]
                 h3_max_field_section_size: None,
                 #[cfg(feature = "http3")]
                 h3_send_grease: None,
@@ -373,6 +379,7 @@ impl ClientBuilder {
                  quic_stream_receive_window,
                  quic_receive_window,
                  quic_send_window,
+                 quic_congestion_controller,
                  h3_max_field_section_size,
                  h3_send_grease,
                  local_address,
@@ -395,6 +402,10 @@ impl ClientBuilder {
 
                     if let Some(send_window) = quic_send_window {
                         transport_config.send_window(send_window);
+                    }
+
+                    if let Some(congestion_controller) = quic_congestion_controller {
+                        transport_config.congestion_controller_factory(congestion_controller);
                     }
 
                     let mut h3_client_config = H3ClientConfig::default();
@@ -542,6 +553,7 @@ impl ClientBuilder {
                             config.quic_stream_receive_window,
                             config.quic_receive_window,
                             config.quic_send_window,
+                            config.quic_congestion_controller,
                             config.h3_max_field_section_size,
                             config.h3_send_grease,
                             config.local_address,
@@ -746,6 +758,7 @@ impl ClientBuilder {
                             config.quic_stream_receive_window,
                             config.quic_receive_window,
                             config.quic_send_window,
+                            config.quic_congestion_controller,
                             config.h3_max_field_section_size,
                             config.h3_send_grease,
                             config.local_address,
@@ -2068,6 +2081,21 @@ impl ClientBuilder {
     #[cfg_attr(docsrs, doc(cfg(all(reqwest_unstable, feature = "http3",))))]
     pub fn http3_send_window(mut self, value: u64) -> ClientBuilder {
         self.config.quic_send_window = Some(value);
+        self
+    }
+
+    /// Congestion controller factory to use
+    ///
+    /// Please see docs in [`TransportConfig`] in [`quinn`].
+    ///
+    /// [`TransportConfig`]: https://docs.rs/quinn/latest/quinn/struct.TransportConfig.html
+    #[cfg(feature = "http3")]
+    #[cfg_attr(docsrs, doc(cfg(all(reqwest_unstable, feature = "http3",))))]
+    pub fn http3_congestion_controller_factory(
+        mut self,
+        factory: Arc<dyn ControllerFactory + Send + Sync + 'static>,
+    ) -> ClientBuilder {
+        self.config.quic_congestion_controller = Some(factory);
         self
     }
 
